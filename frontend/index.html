@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Westfield University — SQL Explorer</title>
+<style>
+  :root {
+    --bg:       #ffffff;
+    --fg:       #000000;
+    --border:   #cccccc;
+    --header-bg:#f0f0f0;
+    --error:    #cc0000;
+    --btn-bg:   #000000;
+    --btn-fg:   #ffffff;
+    --code-bg:  #f7f7f7;
+  }
+  [data-theme="dark"] {
+    --bg:       #000000;
+    --fg:       #ffffff;
+    --border:   #444444;
+    --header-bg:#111111;
+    --error:    #ff6666;
+    --btn-bg:   #ffffff;
+    --btn-fg:   #000000;
+    --code-bg:  #111111;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: monospace;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--fg);
+    padding: 24px;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  h1 { font-size: 18px; font-weight: bold; letter-spacing: 0.02em; }
+
+  #dark-toggle {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: none;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 13px;
+  }
+
+  #query-area {
+    width: 100%;
+    height: 140px;
+    background: var(--code-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    padding: 10px;
+    font-family: monospace;
+    font-size: 13px;
+    resize: vertical;
+    outline: none;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+    margin-bottom: 16px;
+  }
+
+  #run-btn {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: none;
+    padding: 6px 18px;
+    font-family: monospace;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  #run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #status { font-size: 12px; color: var(--border); }
+
+  #error-box {
+    display: none;
+    color: var(--error);
+    border: 1px solid var(--error);
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+  }
+
+  th {
+    background: var(--header-bg);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+
+  td {
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  tr:nth-child(even) td { background: var(--header-bg); }
+
+  .examples {
+    margin-bottom: 16px;
+  }
+
+  .examples summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--border);
+    user-select: none;
+  }
+
+  .examples summary:hover { color: var(--fg); }
+
+  .example-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .ex-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+
+  .ex-btn:hover { background: var(--header-bg); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Westfield University — SQL Explorer</h1>
+  <button id="dark-toggle" onclick="toggleDark()">Dark mode</button>
+</header>
+
+<details class="examples">
+  <summary>Example queries ▾</summary>
+  <div class="example-list" id="example-list"></div>
+</details>
+
+<textarea id="query-area" spellcheck="false" placeholder="SELECT * FROM students ORDER BY gpa DESC;"></textarea>
+
+<div class="controls">
+  <button id="run-btn" onclick="runQuery()">Run</button>
+  <span id="status"></span>
+</div>
+
+<div id="error-box"></div>
+<div class="table-wrap"><div id="result"></div></div>
+
+<script>
+const EXAMPLES = [
+  { label: 'All students by GPA',
+    sql: 'SELECT first_name, last_name, major, gpa FROM students ORDER BY gpa DESC;' },
+  { label: 'Courses with professor',
+    sql: `SELECT c.course_code, c.title, c.semester,\n       p.first_name || ' ' || p.last_name AS professor,\n       d.name AS department\nFROM courses c\nJOIN professors p ON c.professor_id = p.id\nJOIN departments d ON c.department_id = d.id\nORDER BY d.name, c.course_code;` },
+  { label: 'Students in CS301',
+    sql: `SELECT s.first_name || ' ' || s.last_name AS student, e.grade\nFROM enrollments e\nJOIN students s ON e.student_id = s.id\nJOIN courses  c ON e.course_id  = c.id\nWHERE c.course_code = 'CS301'\nORDER BY s.last_name;` },
+  { label: 'Same prof twice',
+    sql: `SELECT s.first_name || ' ' || s.last_name AS student,\n       p.first_name || ' ' || p.last_name AS professor,\n       COUNT(*) AS times_together\nFROM enrollments e\nJOIN courses    c ON c.id = e.course_id\nJOIN professors p ON p.id = c.professor_id\nJOIN students   s ON s.id = e.student_id\nGROUP BY s.id, p.id, s.first_name, s.last_name, p.first_name, p.last_name\nHAVING COUNT(*) > 1\nORDER BY s.last_name;` },
+  { label: 'Avg GPA by major',
+    sql: `SELECT major, ROUND(AVG(gpa), 2) AS avg_gpa, COUNT(*) AS students\nFROM students\nGROUP BY major\nORDER BY avg_gpa DESC;` },
+  { label: 'GPA rank within major',
+    sql: `SELECT first_name || ' ' || last_name AS student, major, gpa,\n       RANK() OVER (PARTITION BY major ORDER BY gpa DESC) AS rank_in_major\nFROM students\nORDER BY major, rank_in_major;` },
+  { label: 'Cross-dept enrollments',
+    sql: `SELECT DISTINCT s.first_name || ' ' || s.last_name AS student, s.major\nFROM students s\nWHERE EXISTS (\n    SELECT 1 FROM enrollments e\n    JOIN courses     c ON c.id = e.course_id\n    JOIN departments d ON d.id = c.department_id\n    WHERE e.student_id = s.id AND d.name <> s.major\n);` },
+  { label: 'Enrollments per dept',
+    sql: `SELECT d.name AS department, COUNT(e.id) AS total_enrollments\nFROM departments d\nJOIN courses     c ON c.department_id = d.id\nJOIN enrollments e ON e.course_id     = c.id\nGROUP BY d.id, d.name\nORDER BY total_enrollments DESC;` },
+];
+
+const list = document.getElementById('example-list');
+EXAMPLES.forEach(ex => {
+  const btn = document.createElement('button');
+  btn.className = 'ex-btn';
+  btn.textContent = ex.label;
+  btn.onclick = () => { document.getElementById('query-area').value = ex.sql; };
+  list.appendChild(btn);
+});
+
+async function runQuery() {
+  const sql = document.getElementById('query-area').value.trim();
+  const btn = document.getElementById('run-btn');
+  const status = document.getElementById('status');
+  const errorBox = document.getElementById('error-box');
+  const result = document.getElementById('result');
+
+  errorBox.style.display = 'none';
+  result.innerHTML = '';
+  btn.disabled = true;
+  status.textContent = 'Running…';
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch('/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await res.json();
+    const elapsed = Date.now() - t0;
+
+    if (data.error) {
+      errorBox.textContent = data.error;
+      errorBox.style.display = 'block';
+      status.textContent = '';
+    } else {
+      status.textContent = `${data.rows.length} row${data.rows.length !== 1 ? 's' : ''} · ${elapsed}ms`;
+      if (data.rows.length === 0) {
+        result.textContent = '(no rows returned)';
+      } else {
+        result.innerHTML = buildTable(data.fields, data.rows);
+      }
+    }
+  } catch (err) {
+    errorBox.textContent = 'Could not reach server.';
+    errorBox.style.display = 'block';
+    status.textContent = '';
+  }
+  btn.disabled = false;
+}
+
+function buildTable(fields, rows) {
+  const ths = fields.map(f => `<th>${esc(f)}</th>`).join('');
+  const trs = rows.map(row =>
+    '<tr>' + fields.map(f => `<td>${esc(row[f] === null ? 'NULL' : String(row[f]))}</td>`).join('') + '</tr>'
+  ).join('');
+  return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.getElementById('query-area').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery();
+});
+
+function toggleDark() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+  document.getElementById('dark-toggle').textContent = isDark ? 'Dark mode' : 'Light mode';
+}
+</script>
+</body>
+</html>
